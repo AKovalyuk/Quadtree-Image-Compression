@@ -20,71 +20,73 @@ class QuadTree:
 
     @staticmethod
     def _get(node: Node, x: int, y: int, x_max: int, x_min: int, y_max: int, y_min: int) -> Any:
-        # При достижении листовой вершины (без потомков) - возвращаем ее данные
-        if node.child0 is None or node.child1 is None or node.child2 is None or node.child3 is None:
-            return node.data
-        # Размер текущего квадранта
-        size = x_max - x_min
-        # Половина размера (для удобства вычислений)
-        half = size // 2
-        # Рекурсивный поиск и вычисление по координатам
-        if x < x_min + half and y < y_min + half:
-            # x и y в левом верхнем квадранте
-            return QuadTree._get(node.child0, x, y, x_max - half, x_min, y_max - half, y_min)
-        elif x >= x_min + half and y < y_min + half:
-            # x и y в правом верхнем квадранте
-            return QuadTree._get(node.child1, x, y, x_max, x_min + half, y_max - half, y_min)
-        elif x < x_min + half and y >= y_min + half:
-            # x и y в левом нижнем квадранте
-            return QuadTree._get(node.child2, x, y, x_max - half, x_min, y_max, y_min + half)
-        else:
-            # x и y в правом нижнем квадранте
-            return QuadTree._get(node.child3, x, y, x_max, x_min + half, y_max, y_min + half)
+        while not node.child0 is None:
+            size = x_max - x_min
+            half = size // 2
+            if x < x_min + half:
+                x_max -= half
+                if y < y_min + half:
+                    y_max -= half
+                    node = node.child0
+                else:
+                    y_min += half
+                    node = node.child2
+            else:
+                x_min += half
+                if y < y_min + half:
+                    y_max -= half
+                    node = node.child1
+                else:
+                    y_min += half
+                    node = node.child3
+        return node.data
     
     def get(self, x: int, y: int) -> Any:
-        if not (x >= 0 and x < self.max_size and y >= 0 and y < self.max_size):
-            raise ValueError("x and y must be in [0, max_size)")
+        # if not (x >= 0 and x < self.max_size and y >= 0 and y < self.max_size):
+        #     raise ValueError("x and y must be in [0, max_size)")
         return self.__class__._get(self.root, x, y, self.max_size, 0, self.max_size, 0)
     
     @staticmethod
     def _set(data: Any, node: Node, x: int, y: int, x_max: int, x_min: int, y_max: int, y_min: int, rule: Callable) -> None:
-        # При достижении квадранта размером 1 - установка данных
-        if x_max - x_min == 1:
-            # Установка потомков в None
-            node.child0 = node.child1 = node.child2 = node.child3 = None
-            # Установка данных
-            node.data = data
-            return
-        # Если встречено еще не разделенное поддерево
-        if node.child0 is None:
-            # Добавление пустых узлов-потомков
-            node.child0 = Node()
-            node.child1 = Node()
-            node.child2 = Node()
-            node.child3 = Node()
-        # Размер текущего квадранта
-        size = x_max - x_min
-        half = size // 2
-        # Рекурсивный поиск в потомках
-        if x < x_min + half and y < y_min + half:
-            QuadTree._set(data, node.child0, x, y, x_max - half, x_min, y_max - half, y_min, rule)
-        elif x >= x_min + half and y < y_min + half:
-            QuadTree._set(data, node.child1, x, y, x_max, x_min + half, y_max - half, y_min, rule)
-        elif x < x_min + half and y >= y_min + half:
-            QuadTree._set(data, node.child2, x, y, x_max - half, x_min, y_max, y_min + half, rule)
-        else:
-            QuadTree._set(data, node.child3, x, y, x_max, x_min + half, y_max, y_min + half, rule)
-        # Попытка объединить данные в квадрантах-потомках
-        union = rule(node.child0.data, node.child1.data, node.child2.data, node.child3.data)
-        if not union is None:
-            # Установить в узел объединенные данные
-            node.data = union
-            # Очистить потомков
-            node.child0 = node.child1 = node.child2 = node.child3 = None
+        chain = []
+        while x_max - x_min != 1:
+            chain.append(node)
+            size = x_max - x_min
+            half = size // 2
+            if node.child0 is None:
+                node.child0 = Node()
+                node.child1 = Node()
+                node.child2 = Node()
+                node.child3 = Node()
+            if x < x_min + half:
+                x_max -= half
+                if y < y_min + half:
+                    y_max -= half
+                    node = node.child0
+                else:
+                    y_min += half
+                    node = node.child2
+            else:
+                x_min += half
+                if y < y_min + half:
+                    y_max -= half
+                    node = node.child1
+                else:
+                    y_min += half
+                    node = node.child3
+        node.child0 = node.child1 = node.child2 = node.child3 = None
+        node.data = data
+        for nod in reversed(chain):
+            union = rule(nod.child0.data, nod.child1.data, nod.child2.data, nod.child3.data)
+            if not union is None:
+                nod.data = union
+                nod.child0 = nod.child1 = nod.child2 = nod.child3 = None
+            else:
+                return
 
     def set(self, data: Any, x: int, y: int):
-        if not (x >= 0 and x < self.max_size and y >= 0 and y < self.max_size):
-            raise ValueError("x and y must be in [0, max_size)")
+        # if not (x >= 0 and x < self.max_size and y >= 0 and y < self.max_size):
+        #     raise ValueError("x and y must be in [0, max_size)")
         self.__class__._set(data, self.root, x, y, self.max_size, 0, self.max_size, 0, self.union_rule)
     
     @staticmethod
