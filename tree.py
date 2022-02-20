@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from typing import Any, Callable, List, Union
 from math import log2, ceil
+from threading import Thread
 
 
 @dataclass
@@ -28,18 +29,20 @@ class Quad:
 class QuadTree:
     """QuadTree for compressing array like objects (images)"""
     def __init__(self, width: int, height: int,
-    checker: Callable[[List[List[Any]], int, int, int, int], Any] = lambda *args: None):
+    checker: Callable[[List[List[Any]], int, int, int, int], Any] = lambda *args: None, multitrhead: bool = False):
         """
         QuadTree constructor
 
         :param int width: image width
         :param int height: image height
+        :param int max_threads: max threads count
         :param function checker: compression functions, returns none, if it can't union
         """
         self.width = width
         self.height = height
         self.checker = checker
         self.max_power = ceil(log2(max(width, height)))
+        self.multitrhead = multitrhead
         self.max_size = 2 ** self.max_power
         self.root = Node()
 
@@ -68,7 +71,7 @@ class QuadTree:
         """
         # Quad out of bounds
         if x_min >= self.width and y_min >= self.height:
-            node.quad = Quad(x_min, x_max, y_min, y_max)
+            node.quad = Quad(x_min, x_max, y_min, y_max, None)
         # Quad partialy out of bounds or section has more details - needs to subdivide
         check_result = None
         if (x_max > self.width or y_max > self.height or
@@ -80,11 +83,33 @@ class QuadTree:
                 node.child2 = Node()
                 node.child3 = Node()
             half = (x_max - x_min) // 2
+            if self.multitrhead and self.max_size == x_max - x_min:
+                thread0 = Thread(target=self.__set, args=(
+                    node.child0, data, x_min, x_max - half, y_min, y_max - half
+                ))
+                thread1 = Thread(target=self.__set, args=(
+                    node.child1, data, x_min + half, x_max, y_min, y_max - half
+                ))
+                thread2 = Thread(target=self.__set, args=(
+                    node.child2, data, x_min, x_max - half, y_min + half, y_max
+                ))
+                thread3 = Thread(target=self.__set, args=(
+                    node.child3, data, x_min + half, x_max, y_min + half, y_max
+                ))
+                thread0.start()
+                thread1.start()
+                thread2.start()
+                thread3.start()
+                thread0.join()
+                thread1.join()
+                thread2.join()
+                thread3.join()
             # Recursive subdivide image
-            self.__set(node.child0, data, x_min, x_max - half, y_min, y_max - half)
-            self.__set(node.child1, data, x_min + half, x_max, y_min, y_max - half)
-            self.__set(node.child2, data, x_min, x_max - half, y_min + half, y_max)
-            self.__set(node.child3, data, x_min + half, x_max, y_min + half, y_max)
+            else:
+                self.__set(node.child0, data, x_min, x_max - half, y_min, y_max - half)
+                self.__set(node.child1, data, x_min + half, x_max, y_min, y_max - half)
+                self.__set(node.child2, data, x_min, x_max - half, y_min + half, y_max)
+                self.__set(node.child3, data, x_min + half, x_max, y_min + half, y_max)
         else:
             # if compression can be performed - make this node a leaf
             node.quad = Quad(x_min, x_max, y_min, y_max, check_result)
