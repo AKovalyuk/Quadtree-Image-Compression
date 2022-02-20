@@ -1,55 +1,50 @@
-from math import ceil
-from typing import Tuple, Any, Callable
+"""Main program"""
+
+from typing import Tuple, Optional
+from argparse import ArgumentParser
+from time import time
+import numpy as np
 from PIL import Image, ImageDraw
 from tree import QuadTree
-from math import log2
 
-from time import time
-
-def pixel_union_rule(max_range: int) -> Callable:
-    def wrapped(*args: Tuple) -> Any:
-        if None in args:
-            return None
-        max_values = [0] * len(args[0])
-        min_values = [255] * len(args[0])
-        for pixel in args:
-            for i in range(len(pixel)):
-                max_values[i] = max(max_values[i], pixel[i])
-                min_values[i] = min(min_values[i], pixel[i])
-        _range = sum([max_values[i] - min_values[i] for i in range(len(max_values))])
-        if _range > max_range:
-            return None
-        return tuple([(max_values[i] + min_values[i]) // 2 for i in range(len(max_values))])
-    return wrapped
-
-def union_rule(*args):
-    if None in args:
-        return None
-    mn, mx = min(args), max(args)
-    if mx - mn < 20:
-        return (mn + mx) // 2
+def checker(arr: np.ndarray, x_min: int, x_max: int, y_min: int, y_max: int) -> Optional[Tuple[int, int, int]]:
+    # Get average color
+    red, green, blue = arr[y_min:y_max, x_min:x_max].mean((0, 1))
+    size = x_max - x_min
+    # Check detalisation
+    if max(arr[y_min:y_max, x_min:x_max].max((0, 1)) - arr[y_min:y_max, x_min:x_max].min((0, 1))) < 256 // size:
+        return round(red), round(green), round(blue)
+    return None
 
 def main():
-    img = Image.open(input())
+    # CLI arguments handler
+    parser = ArgumentParser(description='Image compression')
+    parser.add_argument('--input', required=True, help='Input file')
+    parser.add_argument('--output', default=None, required=False, help='Output file, if none - shows image in window')
+    parser.add_argument('--gif', action='store_true', required=False, help='needs to generate gif?')
+    parser.add_argument('--level', required=False, default=8, type=int, help='Compression level')
+    parser.add_argument('--threads', required=False, default=0, type=int, help='Max thread count')
+    args = parser.parse_args()
+    # Image load
+    img = Image.open(args.input)
     draw = ImageDraw.Draw(img)
     x_size, y_size = img.size
-    max_power = int(ceil(log2(max(x_size, y_size))))
-    print(max_power)
-    tree = QuadTree(max_power=max_power, union_rule=pixel_union_rule(max_range=100))
     now = time()
-    for x in range(x_size):
-        for y in range(y_size):
-            tree.set(img.getpixel((x, y)), x, y)
-        print(x)
-    print(time() - now)
-    for x in range(x_size):
-        for y in range(y_size):
-            draw.point((x, y), tree.get(x, y))
-        print(x)
-    print(time() - now)
-    img.show()
-
-
+    # Convert to numpy array
+    arr = np.asarray(img.convert('RGB'))
+    # Compressing using QuadTree
+    tree = QuadTree(x_size, y_size, checker)
+    tree.set(arr)
+    # Get all quads
+    quads = tree.get_quads()
+    # Drawing quads
+    for quad in quads:
+        draw.rectangle((quad.x_min, quad.y_min, quad.x_max + 1, quad.y_max + 1), quad.data)
+    print(f'Done in {time() - now} s\nQuads in tree: {len(quads)}')
+    if args.output is None:
+        img.show()
+    else:
+        img.save(args.output)
 
 if __name__ == '__main__':
     main()
