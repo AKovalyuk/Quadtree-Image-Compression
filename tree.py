@@ -26,6 +26,14 @@ class Quad:
     y_max: int = 0
     data: Any = None
 
+def quads(x_min, x_max, y_min, y_max, half):
+    return [
+        (x_min, x_max - half, y_min, y_max - half),
+        (x_min + half, x_max, y_min, y_max - half),
+        (x_min, x_max - half, y_min + half, y_max),
+        (x_min + half, x_max, y_min + half, y_max),
+    ]
+
 class QuadTree:
     """QuadTree for compressing array like objects (images)"""
     def __init__(self, width: int, height: int,
@@ -83,18 +91,19 @@ class QuadTree:
                 node.child2 = Node()
                 node.child3 = Node()
             half = (x_max - x_min) // 2
+            quads_ = quads(x_min, x_max, y_min, y_max, half)
             if self.multitrhead and self.max_size == x_max - x_min:
                 thread0 = Thread(target=self.__set, args=(
-                    node.child0, data, x_min, x_max - half, y_min, y_max - half
+                    node.child0, data, *quads_[0]
                 ))
                 thread1 = Thread(target=self.__set, args=(
-                    node.child1, data, x_min + half, x_max, y_min, y_max - half
+                    node.child1, data, *quads_[1]
                 ))
                 thread2 = Thread(target=self.__set, args=(
-                    node.child2, data, x_min, x_max - half, y_min + half, y_max
+                    node.child2, data, *quads_[2]
                 ))
                 thread3 = Thread(target=self.__set, args=(
-                    node.child3, data, x_min + half, x_max, y_min + half, y_max
+                    node.child3, data, *quads_[3]
                 ))
                 thread0.start()
                 thread1.start()
@@ -106,10 +115,10 @@ class QuadTree:
                 thread3.join()
             # Recursive subdivide image
             else:
-                self.__set(node.child0, data, x_min, x_max - half, y_min, y_max - half)
-                self.__set(node.child1, data, x_min + half, x_max, y_min, y_max - half)
-                self.__set(node.child2, data, x_min, x_max - half, y_min + half, y_max)
-                self.__set(node.child3, data, x_min + half, x_max, y_min + half, y_max)
+                self.__set(node.child0, data, *quads_[0])
+                self.__set(node.child1, data, *quads_[1])
+                self.__set(node.child2, data, *quads_[2])
+                self.__set(node.child3, data, *quads_[3])
         else:
             # if compression can be performed - make this node a leaf
             node.quad = Quad(x_min, x_max, y_min, y_max, check_result)
@@ -134,17 +143,18 @@ class QuadTree:
         if not node.quad is None:
             return node.quad.data
         half = (x_max - x_min) // 2
+        quads_ = quads(x_min, x_max, y_min, y_max, half)
         # Check branch
         if x < x_min + half:
             if y < y_min + half:
-                return self.__get(node.child0, x, y, x_min, x_max - half, y_min, y_max - half)
+                return self.__get(node.child0, x, y, *quads[0])
             else:
-                return self.__get(node.child2, x, y, x_min, x_max - half, y_min + half, y_max)
+                return self.__get(node.child2, x, y, *quads[1])
         else:
             if y < y_min + half:
-                return self.__get(node.child1, x, y, x_min + half, x_max, y_min, y_max - half)
+                return self.__get(node.child1, x, y, *quads[2])
             else:
-                return self.__get(node.child3, x, y, x_min + half, x_max, y_min + half, y_max)
+                return self.__get(node.child3, x, y, *quads[3])
 
     def get_quads(self) -> List[Quad]:
         """
