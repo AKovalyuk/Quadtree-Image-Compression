@@ -4,3 +4,4 @@ venv/
 *.jpg
 *.png
 *.gif
+fast.py

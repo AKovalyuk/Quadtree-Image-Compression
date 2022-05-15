@@ -1,7 +1,7 @@
 """QuadTree module"""
 
 from dataclasses import dataclass
-from typing import Any, Callable, List, Union
+from typing import Any, Callable, List, Union, Tuple
 from math import log2, ceil
 from threading import Thread
 
@@ -12,10 +12,7 @@ class Node:
     # Quad (data on leaf nodes)
     quad: Union['Quad', None] = None
     # Child nodes
-    child0: Union['Node', None] = None
-    child1: Union['Node', None] = None
-    child2: Union['Node', None] = None
-    child3: Union['Node', None] = None
+    children: Union[Tuple['Quad'], None] = None
 
 @dataclass
 class Quad:
@@ -85,40 +82,24 @@ class QuadTree:
         if (x_max > self.width or y_max > self.height or
         (check_result := self.checker(data, x_min, x_max, y_min, y_max)) is None) and x_max - x_min > 1:
             # If children is none - create empty child nodes
-            if node.child0 is None:
-                node.child0 = Node()
-                node.child1 = Node()
-                node.child2 = Node()
-                node.child3 = Node()
+            if node.children is None:
+                node.children = (Node(), Node(), Node(), Node())
             half = (x_max - x_min) // 2
             quads_ = quads(x_min, x_max, y_min, y_max, half)
             if self.multitrhead and self.max_size == x_max - x_min:
-                thread0 = Thread(target=self.__set, args=(
-                    node.child0, data, *quads_[0]
-                ))
-                thread1 = Thread(target=self.__set, args=(
-                    node.child1, data, *quads_[1]
-                ))
-                thread2 = Thread(target=self.__set, args=(
-                    node.child2, data, *quads_[2]
-                ))
-                thread3 = Thread(target=self.__set, args=(
-                    node.child3, data, *quads_[3]
-                ))
-                thread0.start()
-                thread1.start()
-                thread2.start()
-                thread3.start()
-                thread0.join()
-                thread1.join()
-                thread2.join()
-                thread3.join()
+                threads = []
+                for i in range(4):
+                    threads.append(Thread(target=self.__set, args=(
+                        node.children[i], data, *quads_[i]
+                    )))
+                for i in range(4):
+                    threads[i].start()
+                for i in range(4):
+                    threads[i].join()
             # Recursive subdivide image
             else:
-                self.__set(node.child0, data, *quads_[0])
-                self.__set(node.child1, data, *quads_[1])
-                self.__set(node.child2, data, *quads_[2])
-                self.__set(node.child3, data, *quads_[3])
+                for i in range(4):
+                    self.__set(node.children[i], data, *quads_[i])
         else:
             # if compression can be performed - make this node a leaf
             node.quad = Quad(x_min, x_max, y_min, y_max, check_result)
@@ -147,14 +128,14 @@ class QuadTree:
         # Check branch
         if x < x_min + half:
             if y < y_min + half:
-                return self.__get(node.child0, x, y, *quads[0])
+                return self.__get(node.children[0], x, y, *quads[0])
             else:
-                return self.__get(node.child2, x, y, *quads[1])
+                return self.__get(node.children[2], x, y, *quads[1])
         else:
             if y < y_min + half:
-                return self.__get(node.child1, x, y, *quads[2])
+                return self.__get(node.children[1], x, y, *quads[2])
             else:
-                return self.__get(node.child3, x, y, *quads[3])
+                return self.__get(node.children[3], x, y, *quads[3])
 
     def get_quads(self) -> List[Quad]:
         """
@@ -174,7 +155,5 @@ class QuadTree:
         if not node.quad is None:
             container.append(node.quad)
         else:
-            self.__get_quads(node.child0, container)
-            self.__get_quads(node.child1, container)
-            self.__get_quads(node.child2, container)
-            self.__get_quads(node.child3, container)
+            for i in range(4):
+                self.__get_quads(node.children[i], container)
